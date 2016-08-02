@@ -26,7 +26,6 @@ learning_rate = 0.01
 training_epochs = 10 
 batch_size = 256 
 display_step = 1
-examples_to_show = 10
 BETA = tf.constant(0.01)
 RHO = tf.constant(0.05)
 
@@ -38,7 +37,7 @@ n_layers = len(n_units_per_layer)
 Xs = []
 weights = {}
 biases = {}
-for layer_idx in range(n_layers)):
+for layer_idx in range(n_layers):
   Xs.append(tf.placeholder("float", [None, n_units_per_layer[layer_idx]]))
 
 for layer_idx in range(n_layers-1):
@@ -114,10 +113,6 @@ for i in range(n_layers-2):
   costs_sparse.append(tf.mul(BETA, tf.reduce_sum(KL_divergence(RHO, rho_hats[i]))))
   optimizers.append(tf.train.RMSPropOptimizer(learning_rate).minimize(tf.add(costs[i], costs_sparse[i])))
 
-#fine tunning
-cost = tf.reduce_mean(tf.pow(Xs[0] - decoder_chains["decoder_l1"], 2))
-optimizer = tf.train.RMSPropOptimizer(learning_rate).minimize(cost)
-
 # Initializing the variables
 init = tf.initialize_all_variables()
 
@@ -133,9 +128,8 @@ with tf.Session() as sess:
         for i in range(total_batch):
           batch_xs, batch_ys = mnist.train.next_batch(batch_size)
             
-          if layer_idx > 0:
-            for j in range(layer_idx):
-              batch_xs = sess.run(encoders[j], feed_dict={Xs[j]: batch_xs})
+          for j in range(layer_idx):
+            batch_xs = sess.run(encoders[j], feed_dict={Xs[j]: batch_xs})
 
           # Run optimization op (backprop) and cost op (to get loss value)
           _, c, c_sparse = sess.run([optimizers[layer_idx], costs[layer_idx], costs_sparse[layer_idx]], feed_dict={Xs[layer_idx]: batch_xs, num_batch: np.array([batch_size])})
