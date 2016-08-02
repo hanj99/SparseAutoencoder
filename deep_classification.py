@@ -23,7 +23,7 @@ mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
 
 # Parameters
 learning_rate = 0.01
-training_epochs = 20 
+training_epochs = 10 
 batch_size = 256 
 display_step = 1
 examples_to_show = 10
@@ -31,52 +31,34 @@ BETA = tf.constant(0.1)
 RHO = tf.constant(0.05)
 
 # Network Parameters
+n_units_per_layer = [784, 128, 128, 10]
+n_input = 784 # MNIST data input (img shape: 28*28)
 n_hidden_1 = 128 
 n_hidden_2 = 128 
 n_hidden_3 = 10 
-n_input = 784 # MNIST data input (img shape: 28*28)
 n_layers = 2 
 
 # tf Graph input (only pictures)
 Xs = []
-Xs.append(tf.placeholder("float", [None, n_input]))
-Xs.append(tf.placeholder("float", [None, n_hidden_1]))
-Xs.append(tf.placeholder("float", [None, n_hidden_2]))
-Xs.append(tf.placeholder("float", [None, n_hidden_3]))
-Ys = []
-Ys.append(tf.placeholder("float", [None, n_hidden_1]))
-Ys.append(tf.placeholder("float", [None, n_hidden_2]))
-Ys.append(tf.placeholder("float", [None, n_hidden_3]))
+weights = {}
+biases = {}
+for layer_idx in range(len(n_units_per_layer)):
+  Xs.append(tf.placeholder("float", [None, n_units_per_layer[layer_idx]]))
 
-weights = {
-    'encoder_h1': tf.Variable(tf.truncated_normal([n_input, n_hidden_1], stddev=0.1)),
-    'encoder_h2': tf.Variable(tf.truncated_normal([n_hidden_1, n_hidden_2], stddev=0.1)),
-    'encoder_h3': tf.Variable(tf.truncated_normal([n_hidden_2, n_hidden_3], stddev=0.1)),
-    'decoder_h1': tf.Variable(tf.truncated_normal([n_hidden_1, n_input], stddev=0.1)),
-    'decoder_h2': tf.Variable(tf.random_normal([n_hidden_2, n_hidden_1])),
-    'decoder_h3': tf.Variable(tf.random_normal([n_hidden_3, n_hidden_2])),
-}
-biases = {
-    'encoder_b1': tf.Variable(tf.constant(0.1, shape=[n_hidden_1])),
-    'encoder_b2': tf.Variable(tf.constant(0.1, shape=[n_hidden_2])),
-    'encoder_b3': tf.Variable(tf.constant(0.1, shape=[n_hidden_3])),
-    'decoder_b1': tf.Variable(tf.constant(0.1, shape=[n_input])),
-    'decoder_b2': tf.Variable(tf.random_normal([n_hidden_1])),
-    'decoder_b3': tf.Variable(tf.random_normal([n_hidden_2])),
-}
-
+for layer_idx in range(len(n_units_per_layer)-1):
+  weights["encoder_h{0}".format(layer_idx+1)] = tf.Variable(tf.truncated_normal([n_units_per_layer[layer_idx], n_units_per_layer[layer_idx + 1]], stddev=0.1))
+  weights["decoder_h{0}".format(layer_idx+1)] = tf.Variable(tf.truncated_normal([n_units_per_layer[layer_idx+1], n_units_per_layer[layer_idx]], stddev=0.1))
+  biases["encoder_b{0}".format(layer_idx+1)] = tf.Variable(tf.constant(0.1, shape=[n_units_per_layer[layer_idx+1]]))
+  biases["decoder_b{0}".format(layer_idx+1)] = tf.Variable(tf.constant(0.1, shape=[n_units_per_layer[layer_idx]]))
 
 # Building the encoder
 def encoder(x, layer_no):
-    #activation = tf.nn.softmax(tf.add(tf.matmul(x, weights['encoder_h%d' % layer_no]), biases['encoder_b%d' % layer_no]))
     activation = tf.nn.sigmoid(tf.add(tf.matmul(x, weights['encoder_h%d' % layer_no]), biases['encoder_b%d' % layer_no]))
-    #activation = (tf.add(tf.matmul(x, weights['encoder_h%d' % layer_no]), biases['encoder_b%d' % layer_no]))
     return activation 
 
 # Building the decoder
 def decoder(y, layer_no):
-    activation = tf.nn.sigmoid(tf.add(tf.matmul(y, weights['decoder_h%d' % layer_no]),
-                                   biases['decoder_b%d' % layer_no]))
+    activation = tf.nn.sigmoid(tf.add(tf.matmul(y, weights['decoder_h%d' % layer_no]), biases['decoder_b%d' % layer_no]))
     return activation 
 
 # Kullback-Leibler
@@ -92,19 +74,20 @@ def log_func(x, y):
 # Construct model
 encoders = []
 decoders = []
-decoders_final = []
-for i in range(n_layers):
-  encoders.append(encoder(Xs[i], i+1))
-  decoders.append(decoder(encoders[i], i+1))
-  decoders_final.append(decoder(Ys[i], i+1))
+
+for layer_idx in range(n_layers):
+  encoders.append(encoder(Xs[layer_idx], layer_idx+1))
+  decoders.append(decoder(encoders[layer_idx], layer_idx+1))
 
 # for fine tunning
-encoder_l1 = encoder(Xs[0], 1)
-encoder_l2 = encoder(encoder_l1, 2)
-encoder_l3 = encoder(encoder_l2, 3)
-decoder_l3 = decoder(encoder_l3, 3)
-decoder_l2 = decoder(decoder_l3, 2)
-decoder_l1 = decoder(decoder_l2, 1)
+encoder_chains = {"encoder_l0": Xs[0]} 
+for layer_idx in range(len(n_units_per_layer)-1):
+  encoder_chains["encoder_l{0}".format(layer_idx+1)] = encoder(encoder_chains["encoder_l{0}".format(layer_idx)], layer_idx+1)
+
+decoder_chains = {"decoder_l{0}".format(len(n_units_per_layer)): encoder_chains["encoder_l{0}".format(len(n_units_per_layer)-1)]}
+for layer_idx in range(len(n_units_per_layer)-1, 0, -1):
+  decoder_chains["decoder_l{0}".format(layer_idx)] = decoder(decoder_chains["decoder_l{0}".format(layer_idx+1)], layer_idx)
+
 
 # sparse contraint
 num_batch = tf.placeholder("float", 1)
@@ -121,12 +104,9 @@ for i in range(n_layers):
   y_trues.append(Xs[i])
 
 # Classification layer
-#Y = tf.nn.softmax(encoder_l3) #FIXME
-Y = tf.nn.softmax(encoder_l3) #FIXME
+Y = tf.nn.softmax(encoder_chains["encoder_l{0}".format(len(n_units_per_layer)-1)]) 
 Y_ = tf.placeholder(tf.float32, [None, 10])
-#cross_entropy = -1 * tf.reduce_mean(tf.reduce_sum(Y_ * tf.log(Y), reduction_indices=[1]))
 cross_entropy = tf.reduce_sum(- Y_ * tf.log(Y) - (1 - Y_) * tf.log(1 - Y), reduction_indices=[1])
-#cross_entropy = tf.nn.softmax_cross_entropy_with_logits(encoder_l3, Y_) 
 train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 
 # Define loss and optimizer, minimize the squared error
@@ -139,7 +119,7 @@ for i in range(n_layers):
   optimizers.append(tf.train.RMSPropOptimizer(learning_rate).minimize(tf.add(costs[i], costs_sparse[i])))
 
 #fine tunning
-cost = tf.reduce_mean(tf.pow(Xs[0] - decoder_l1, 2))
+cost = tf.reduce_mean(tf.pow(Xs[0] - decoder_chains["decoder_l1"], 2))
 optimizer = tf.train.RMSPropOptimizer(learning_rate).minimize(cost)
 
 # Initializing the variables
@@ -171,36 +151,6 @@ with tf.Session() as sess:
                 "cost=", "{:.9f}".format(c))
 
     print("Optimization Finished!")
-
-    # fine tunning 
-    #for epoch in range(training_epochs):
-    #  for i in range(total_batch):
-    #    batch_xs, batch_ys = mnist.train.next_batch(batch_size)
-    #    _, c = sess.run([optimizer, cost], feed_dict={Xs[0]: batch_xs, num_batch: np.array([batch_size])})
-
-    #  if epoch % display_step == 0:
-    #    print("Layer:", '%04d' % (layer_idx+1),
-    #          "Epoch:", '%04d' % (epoch+1),
-    #          "cost=", "{:.9f}".format(c))
-
-    # Applying encode and decode over test set
-    #batch_xs = mnist.test.images[:examples_to_show]
-    #for layer_idx in range(n_layers):
-    #  batch_xs = sess.run(encoders[layer_idx], feed_dict={Xs[layer_idx]: batch_xs})
-
-    #batch_ys = batch_xs
-    #for layer_idx in range(n_layers-1, -1, -1):
-    #  batch_ys = sess.run(decoders_final[layer_idx], feed_dict={Ys[layer_idx]: batch_ys})
-
-    ## Compare original images with their reconstructions
-    #f, a = plt.subplots(2, 10, figsize=(10, 2))
-    #for i in range(examples_to_show):
-    #    a[0][i].imshow(np.reshape(mnist.test.images[i], (28, 28)))
-    #    a[1][i].imshow(np.reshape(batch_ys[i], (28, 28)))
-    #f.show()
-    #plt.draw()
-    #plt.waitforbuttonpress()
-
 
     # classification training
     for i in range(2000):
