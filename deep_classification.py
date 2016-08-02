@@ -1,15 +1,6 @@
-""" Sparse Auto Encoder Example.
-This is a variant of https://github.com/aymericdamien/TensorFlow-Examples.
-1. Sparsity constraint is added
-2. The number of hidden layer is reduced to one.
+""" Deep Sparse Auto Encoder Example.
 
-Using an auto encoder on MNIST handwritten digits.
-References:
-    Y. LeCun, L. Bottou, Y. Bengio, and P. Haffner. "Gradient-based
-    learning applied to document recognition." Proceedings of the IEEE,
-    86(11):2278-2324, November 1998.
-Links:
-    [MNIST Dataset] http://yann.lecun.com/exdb/mnist/
+This is a variant of https://github.com/aymericdamien/TensorFlow-Examples.
 """
 from __future__ import division, print_function, absolute_import
 
